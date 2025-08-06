@@ -1,0 +1,6 @@
+// zkp/risk_check.zok
+def main(private field riskScore, public field threshold) -> bool {
+    assert(riskScore < 101); // Ensure score is 0-100
+    bool isFraud = riskScore >= threshold;
+    return isFraud;
+}

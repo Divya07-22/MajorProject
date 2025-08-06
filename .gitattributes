@@ -1,0 +1,2 @@
+Backend/data/creditcard.csv filter=lfs diff=lfs merge=lfs -text
+Backend/zokrates.exe filter=lfs diff=lfs merge=lfs -text
