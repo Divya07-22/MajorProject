@@ -4,7 +4,6 @@ pragma solidity ^0.8.19;
 import "./FraudLedger.sol";
 
 contract FraudMitigator {
-    // This contract contains the business logic.
     address public owner;
     FraudLedger private fraudLedger;
     mapping(address => bool) public frozenAccounts;
@@ -30,12 +29,9 @@ contract FraudMitigator {
     }
 
     function triggerMfa(string memory _transactionIdentifier) internal {
-        // In a real system, this would interact with an off-chain oracle.
-        // For our project, it emits an event that the frontend/backend can listen for.
         emit MfaTriggered(_transactionIdentifier);
     }
 
-    // The API server will call this main function
     function executeResponse(
         uint256 riskScore,
         address userAccount,
@@ -47,9 +43,8 @@ contract FraudMitigator {
     ) public onlyOwner {
         if (riskScore >= 85) { // High Risk
             freezeAccount(userAccount);
-            // Call the other contract to report the fraud with proof
             fraudLedger.reportFraudWithProof(transactionIdentifier, publicInputs, a, b, c);
-        } else if (risk_score >= 60) { // Medium Risk
+        } else if (riskScore >= 60) { // Medium Risk
             triggerMfa(transactionIdentifier);
         }
         // If low risk, do nothing.

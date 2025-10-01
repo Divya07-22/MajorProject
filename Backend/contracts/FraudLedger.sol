@@ -1,23 +1,26 @@
 // contracts/FraudLedger.sol
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
-import "./verifier.sol";
+import "./Verifier.sol";
 
 contract FraudLedger {
-    // This contract's ONLY job is to securely store fraud reports with a ZKP.
     Verifier private verifier;
+
     struct SecureFraudReport {
         uint256 reportId;
         string transactionIdentifier;
         uint256 blockTimestamp;
         address reporter;
     }
-    uint256 private reportCounter;
+
+    uint256 public reportCounter;
     mapping(uint256 => SecureFraudReport) public secureFraudReports;
+
     event SecureReportAdded(uint256 indexed reportId, string transactionIdentifier);
 
     constructor(address _verifierAddress) {
         verifier = Verifier(_verifierAddress);
+        reportCounter = 0;
     }
 
     function reportFraudWithProof(
@@ -40,6 +43,7 @@ contract FraudLedger {
             block.timestamp,
             msg.sender
         );
+
         emit SecureReportAdded(reportCounter, _transactionIdentifier);
     }
 }
