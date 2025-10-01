@@ -1,31 +1,16 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState } from 'react';
 import api from '../services/api';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // This part can be expanded later to verify token with backend on page load
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      // In a real app, you'd decode the token to get user info
-      setUser({ loggedIn: true });
-    }
-    setLoading(false);
-  }, []);
-
-  const register = async (userData) => {
-    return api.post('/register', userData);
-  };
+  const [user, setUser] = useState(localStorage.getItem('access_token') ? true : null);
 
   const login = async (credentials) => {
     const response = await api.post('/login', credentials);
     if (response.data.access_token) {
       localStorage.setItem('access_token', response.data.access_token);
-      setUser({ loggedIn: true });
+      setUser(true);
     }
   };
 
@@ -35,7 +20,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, register, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

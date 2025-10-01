@@ -1,11 +1,27 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { useAuth } from '../hooks/useAuth';
-import PageWrapper from '../components/layout/PageWrapper';
 import Card from '../components/ui/Card';
-import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
+import { useAuth } from '../hooks/useAuth';
+
+const LoginWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+`;
+
+const Input = styled.input`
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 16px;
+  background-color: #121212;
+  border: 1px solid #2c2c2c;
+  border-radius: 8px;
+  color: #e0e0e0;
+  font-size: 1rem;
+`;
 
 const Title = styled.h2`
   text-align: center;
@@ -14,41 +30,44 @@ const Title = styled.h2`
 const ErrorMessage = styled.p`
   color: ${({ theme }) => theme.colors.danger};
   text-align: center;
+  margin-bottom: 1rem;
+`;
+const Subtext = styled.p`
+  text-align: center;
+  margin-top: 1rem;
+  color: ${({ theme }) => theme.colors.textSecondary};
 `;
 
 const LoginPage = () => {
-    const [credentials, setCredentials] = useState({ email: '', password: '' });
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const { login } = useAuth();
     const navigate = useNavigate();
-
-    const handleChange = (e) => {
-        setCredentials({ ...credentials, [e.target.name]: e.target.value });
-    };
+    const { login } = useAuth();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError('');
         try {
-            await login(credentials);
-            navigate('/dashboard'); // Redirect to dashboard on successful login
-        } catch (err) {
-            setError('Login failed. Please check your credentials.');
+            await login({ email, password });
+            navigate('/dashboard');
+        } catch (error) {
+            setError('Login Failed. Please check your credentials.');
         }
     };
 
     return (
-        <PageWrapper>
-            <Card>
-                <Title>Secure Login</Title>
+        <LoginWrapper>
+            <Card style={{width: '400px'}}>
+                <h2 style={{textAlign: 'center', marginBottom: '24px'}}>Secure Login</h2>
                 <form onSubmit={handleSubmit}>
-                    <Input name="email" type="email" placeholder="Email Address" onChange={handleChange} required />
-                    <Input name="password" type="password" placeholder="Password" onChange={handleChange} required />
+                    <Input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
+                    <Input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
                     {error && <ErrorMessage>{error}</ErrorMessage>}
                     <Button type="submit">Login</Button>
                 </form>
+                <Subtext>Don't have an account? <Link to="/register" style={{color: '#4a90e2'}}>Register here</Link></Subtext>
             </Card>
-        </PageWrapper>
+        </LoginWrapper>
     );
 };
 

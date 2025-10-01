@@ -3,17 +3,16 @@ import styled from 'styled-components';
 const Input = styled.input`
   width: 100%;
   padding: 12px;
-  margin-bottom: ${({ theme }) => theme.spacing.medium};
-  background-color: rgba(10, 10, 26, 0.8);
-  border: 1px solid ${({ theme }) => theme.colors.secondary};
+  margin-bottom: 16px;
+  background-color: #121212;
+  border: 1px solid ${({ theme, error }) => error ? theme.colors.danger : theme.colors.border};
   border-radius: 8px;
-  color: ${({ theme }) => theme.colors.text};
-  font-size: ${({ theme }) => theme.fontSizes.medium};
+  color: #e0e0e0;
+  font-size: 1rem;
 
   &:focus {
     outline: none;
     border-color: ${({ theme }) => theme.colors.primary};
-    box-shadow: 0 0 10px ${({ theme }) => theme.colors.glow};
   }
 `;
 
