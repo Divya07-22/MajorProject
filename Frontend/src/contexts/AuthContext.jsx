@@ -6,6 +6,10 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(localStorage.getItem('access_token') ? true : null);
 
+  const register = async (userData) => {
+    return api.post('/register', userData);
+  };
+
   const login = async (credentials) => {
     const response = await api.post('/login', credentials);
     if (response.data.access_token) {
@@ -20,7 +24,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, register, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -8,12 +8,10 @@ const ScoreWrapper = styled(Card)`
   align-items: center;
   justify-content: center;
 `;
-
 const ScoreLabel = styled.p`
     color: ${({ theme }) => theme.colors.textSecondary};
     font-weight: 500;
 `;
-
 const ScoreValue = styled.h1`
     font-size: 5rem;
     font-weight: 700;

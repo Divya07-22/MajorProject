@@ -4,16 +4,14 @@ import styled from 'styled-components';
 import { useAuth } from '../hooks/useAuth';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input'; // We will create this file next
+import Input from '../components/ui/Input';
 
-// This replaces PageWrapper for this specific page
 const RegisterWrapper = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100vh;
 `;
-
 const Title = styled.h2`
   text-align: center;
   margin-bottom: ${({ theme }) => theme.spacing.large};
@@ -74,16 +72,12 @@ const RegisterPage = () => {
                 <form onSubmit={handleSubmit}>
                     <Input name="email" type="email" placeholder="Email Address" onChange={handleChange} error={errors.email} />
                     {errors.email && <ErrorMessage>{errors.email}</ErrorMessage>}
-                    
                     <Input name="password" type="password" placeholder="Password" onChange={handleChange} error={errors.password} />
                     {errors.password && <ErrorMessage>{errors.password}</ErrorMessage>}
-
                     <Input name="phone_number" type="text" placeholder="Phone Number (e.g., +91...)" onChange={handleChange} error={errors.phone_number} />
                     {errors.phone_number && <ErrorMessage>{errors.phone_number}</ErrorMessage>}
-
                     <Input name="address" type="text" placeholder="Your Ethereum Address (0x...)" onChange={handleChange} error={errors.address} />
                     {errors.address && <ErrorMessage>{errors.address}</ErrorMessage>}
-                    
                     {errors.form && <ErrorMessage style={{textAlign: 'center'}}>{errors.form}</ErrorMessage>}
                     <Button type="submit">Create Account</Button>
                 </form>

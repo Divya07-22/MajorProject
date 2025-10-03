@@ -58,7 +58,7 @@ const LoginPage = () => {
     return (
         <LoginWrapper>
             <Card style={{width: '400px'}}>
-                <h2 style={{textAlign: 'center', marginBottom: '24px'}}>Secure Login</h2>
+                <Title>Secure Login</Title>
                 <form onSubmit={handleSubmit}>
                     <Input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
                     <Input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />

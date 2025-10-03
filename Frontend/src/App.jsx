@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import GlobalStyles from './styles/GlobalStyles';
 import { useAuth } from './hooks/useAuth';
 import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage'; // <-- IMPORT THE NEW PAGE
+import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 
 const PrivateRoute = ({ children }) => {
@@ -17,7 +17,7 @@ function App() {
       <GlobalStyles />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} /> {/* <-- ADD THE ROUTE */}
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
