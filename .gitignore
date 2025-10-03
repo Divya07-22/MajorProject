@@ -1,0 +1,14 @@
+# Python / Backend
+/backend/venv/
+/backend/data/
+/backend/models/trained_models/
+/backend/build/
+/backend/__pycache__/
+*.pyc
+.env
+
+# Node / Frontend
+/frontend/node_modules/
+/frontend/dist/
+.DS_Store
+npm-debug.log
