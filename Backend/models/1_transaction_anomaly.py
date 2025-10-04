@@ -2,9 +2,9 @@
 
 import pandas as pd
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import StandardScaler # <-- IMPORTED
+from sklearn.preprocessing import StandardScaler
 import joblib
-import os # <-- IMPORTED
+import os
 
 print("Starting Model 1: Isolation Forest & Data Preprocessing...")
 
@@ -13,14 +13,12 @@ df = pd.read_csv('data/creditcard.csv')
 features = df.drop(['Time', 'Class'], axis=1)
 
 # --- CRITICAL FIX: Create and Save the Scaler ---
-# The app.py server needs this file to process live transactions.
-# This was the missing step.
 print("Creating and saving the data scaler...")
 scaler = StandardScaler()
-scaler.fit(features) # Fit the scaler on the full training data
+scaler.fit(features)
 
 save_path = 'models/trained_models'
-os.makedirs(save_path, exist_ok=True) # Ensure the directory exists
+os.makedirs(save_path, exist_ok=True)
 
 joblib.dump(scaler, os.path.join(save_path, 'scaler.joblib'))
 print(f"Scaler saved to {os.path.join(save_path, 'scaler.joblib')}")

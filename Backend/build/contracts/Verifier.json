@@ -1978,12 +1978,12 @@
     "5777": {
       "events": {},
       "links": {},
-      "address": "0x597a201a0E20e7aEF71D42065A0D23957b186783",
-      "transactionHash": "0x7f2ad0285aa7ac1144b8683a6842c1619c3b346124444e56d2b98c552602c481"
+      "address": "0x2443166a095A2F041F19B312e32943F9Ac8F0310",
+      "transactionHash": "0xbe483c7fb3970668e891206553974feb243dd5ce5f0f99f4fd9d399047d54cd8"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-03T05:37:02.706Z",
+  "updatedAt": "2025-10-04T11:48:11.647Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

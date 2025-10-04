@@ -1,14 +1,21 @@
-# Python / Backend
-/backend/venv/
-/backend/data/
-/backend/models/trained_models/
-/backend/build/
-/backend/__pycache__/
-*.pyc
-.env
+# Environment variables - VERY IMPORTANT
+Backend/.env
 
-# Node / Frontend
-/frontend/node_modules/
-/frontend/dist/
+# Python virtual environment
+Backend/venv/
+
+# Node.js dependencies
+/node_modules/
+Frontend/node_modules/
+
+# Python cache
+Backend/__pycache__/
+
+# Build artifacts
+Backend/build/
+
+# Frontend build output
+Frontend/dist/
+
+# OS-specific files
 .DS_Store
-npm-debug.log
