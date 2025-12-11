@@ -997,10 +997,18 @@ def rate_limit_exceeded(error):
     return jsonify({'error': 'Rate limit exceeded. Please try again later.'}), 429
 
 # --- 11. APPLICATION ENTRY POINT ---
+# if __name__ == '__main__':
+#     with app.app_context():
+#         db.create_all()
+#         logger.info("Database tables created/verified")
+    
+#     logger.info("[SUCCESS] Starting Flask application...")
+#     app.run(host='0.0.0.0', port=5000, debug=True)
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         logger.info("Database tables created/verified")
     
     logger.info("[SUCCESS] Starting Flask application...")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

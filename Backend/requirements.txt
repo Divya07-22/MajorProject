@@ -23,3 +23,4 @@ marshmallow
 gunicorn
 redis
 gunicorn==21.2.0
+py_ecc
