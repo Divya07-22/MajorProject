@@ -1,0 +1,17 @@
+{
+  "inputs": [
+    {
+      "name": "riskScore",
+      "public": false,
+      "type": "field"
+    },
+    {
+      "name": "threshold",
+      "public": true,
+      "type": "field"
+    }
+  ],
+  "output": {
+    "type": "field"
+  }
+}

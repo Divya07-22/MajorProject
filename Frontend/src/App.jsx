@@ -1,58 +1,95 @@
-// src/App.jsx
-
 import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import GlobalStyles from './styles/GlobalStyles';
 import { useAuth } from './hooks/useAuth';
 import Sidebar from './components/layout/Sidebar';
 import DashboardGrid from './components/layout/DashboardGrid';
+import Toast from './components/ui/Toast';
 
-// Import All Pages
+// User Pages
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import HistoryPage from './pages/HistoryPage';
+
+// Admin Pages
 import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import AdminHistoryPage from './pages/AdminHistoryPage';
+import AdminUsersPage from './pages/AdminUsersPage';
 
 const PrivateRoute = ({ children }) => {
     const { user } = useAuth();
     return user ? children : <Navigate to="/login" />;
 };
 
-// Main layout for pages that have a sidebar
-const Layout = ({ children, theme, toggleTheme }) => (
+const AdminPrivateRoute = ({ children }) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const token = localStorage.getItem('token');
+    
+    if (!token || user.role !== 'admin') {
+        return <Navigate to="/admin/login" />;
+    }
+    
+    return children;
+};
+
+const UserLayout = ({ children, theme, toggleTheme }) => (
     <DashboardGrid>
         <Sidebar theme={theme} toggleTheme={toggleTheme} />
         {children}
     </DashboardGrid>
 );
 
-function App({ theme, toggleTheme }) { // Receive theme props
+function App({ theme, toggleTheme }) {
   const location = useLocation();
-  const showSidebar = ['/dashboard', '/history', '/admin'].includes(location.pathname);
 
   return (
     <>
       <GlobalStyles />
-      {showSidebar ? (
-        <Layout theme={theme} toggleTheme={toggleTheme}>
-            <Routes>
-                <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-                <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-                <Route path="/admin" element={<PrivateRoute><AdminDashboardPage /></PrivateRoute>} />
-            </Routes>
-        </Layout>
-      ) : (
-        <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/admin-login" element={<AdminLoginPage />} />
-            <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      )}
+      <Toast />
+      
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        
+        {/* Admin login (public) */}
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        
+        {/* Admin routes (protected, no sidebar - built into pages) */}
+        <Route path="/admin/dashboard" element={<AdminPrivateRoute><AdminDashboardPage /></AdminPrivateRoute>} />
+        <Route path="/admin/history" element={<AdminPrivateRoute><AdminHistoryPage /></AdminPrivateRoute>} />
+        <Route path="/admin/users" element={<AdminPrivateRoute><AdminUsersPage /></AdminPrivateRoute>} />
+        <Route path="/admin" element={<Navigate to="/admin/dashboard" />} />
+        
+        {/* User routes (protected, with sidebar) */}
+        <Route 
+          path="/dashboard" 
+          element={
+            <PrivateRoute>
+              <UserLayout theme={theme} toggleTheme={toggleTheme}>
+                <DashboardPage />
+              </UserLayout>
+            </PrivateRoute>
+          } 
+        />
+        <Route 
+          path="/history" 
+          element={
+            <PrivateRoute>
+              <UserLayout theme={theme} toggleTheme={toggleTheme}>
+                <HistoryPage />
+              </UserLayout>
+            </PrivateRoute>
+          } 
+        />
+        
+        {/* Catch all */}
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
     </>
   );
 }

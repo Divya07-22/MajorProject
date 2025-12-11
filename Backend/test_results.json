@@ -1,0 +1,184 @@
+[
+  {
+    "test": "Health Check",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": {
+      "services": {
+        "blockchain": true,
+        "database": true,
+        "mongodb": true
+      },
+      "status": "healthy",
+      "timestamp": "2025-10-05T08:50:42.291716+00:00"
+    }
+  },
+  {
+    "test": "User Registration",
+    "status": 201,
+    "expected": 201,
+    "result": " PASS",
+    "response": {
+      "message": "User created successfully",
+      "user": {
+        "email": "test_142042@example.com",
+        "ethereum_address": "123 Test St",
+        "id": 27,
+        "is_frozen": false,
+        "role": "user"
+      }
+    }
+  },
+  {
+    "test": "User Login",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc1OTY1NDI0NiwianRpIjoiZWI4ZWRjMjktY2FiNS00N2M1LTgwNGEtZTZkNjc0MWZiMzZhIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjI3IiwibmJmIjoxNzU5NjU0MjQ2LCJjc3JmIjoiNDk0MzgyYzEtMTBkYS00MzZhLWFhNzQtYmY1ZmYyNDM3YThlIiwiZXhwIjoxNzU5NjU3ODQ2LCJyb2xlIjoidXNlciJ9.ey_F8BBU6g4VlZhT-ihqR4hTnIofPcA3smY9ArfMb98",
+      "user": {
+        "email": "test_142042@example.com",
+        "ethereum_address": "123 Test St",
+        "id": 27,
+        "is_frozen": false,
+        "role": "user"
+      }
+    }
+  },
+  {
+    "test": "Get Profile",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": {
+      "created_at": "2025-10-05T08:50:44.520920",
+      "email": "test_142042@example.com",
+      "ethereum_address": "123 Test St",
+      "id": 27,
+      "is_frozen": false,
+      "phone_number": "+1234567890",
+      "role": "user"
+    }
+  },
+  {
+    "test": "Update Profile",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": {
+      "message": "Profile updated successfully"
+    }
+  },
+  {
+    "test": "Low Risk Transaction",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": {
+      "amount": 50.0,
+      "risk_score": 5.950134800514206e-05,
+      "status": "Low Risk - Transaction Approved"
+    }
+  },
+  {
+    "test": "Full Transaction",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": {
+      "amount": 1200.0,
+      "risk_score": 8.793546294327825e-05,
+      "status": "Low Risk - Transaction Approved"
+    }
+  },
+  {
+    "test": "High Risk Transaction",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": {
+      "amount": 50000.0,
+      "risk_score": 0.0001242267753696069,
+      "status": "Low Risk - Transaction Approved"
+    }
+  },
+  {
+    "test": "Transaction History",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": [
+      {
+        "amount": 50000.0,
+        "id": 24,
+        "location": null,
+        "merchant": null,
+        "risk_score": 0.0001242267753696069,
+        "status": "Low Risk - Transaction Approved",
+        "timestamp": "2025-10-05T08:50:57.456992",
+        "transaction_type": null,
+        "tx_hash": null,
+        "user_id": 27
+      },
+      {
+        "amount": 1200.0,
+        "id": 23,
+        "location": "Seattle, WA",
+        "merchant": "Amazon",
+        "risk_score": 8.793546294327825e-05,
+        "status": "Low Risk - Transaction Approved",
+        "timestamp": "2025-10-05T08:50:55.352366",
+        "transaction_type": "online",
+        "tx_hash": null,
+        "user_id": 27
+      },
+      {
+        "amount": 50.0,
+        "id": 22,
+        "location": null,
+        "merchant": null,
+        "risk_score": 5.950134800514206e-05,
+        "status": "Low Risk - Transaction Approved",
+        "timestamp": "2025-10-05T08:50:53.270338",
+        "transaction_type": null,
+        "tx_hash": null,
+        "user_id": 27
+      }
+    ]
+  },
+  {
+    "test": "Blockchain Logs",
+    "status": 200,
+    "expected": 200,
+    "result": " PASS",
+    "response": []
+  },
+  {
+    "test": "Invalid Login",
+    "status": 401,
+    "expected": 401,
+    "result": " PASS",
+    "response": {
+      "error": "Invalid credentials"
+    }
+  },
+  {
+    "test": "Unauthorized Profile",
+    "status": 401,
+    "expected": 401,
+    "result": " PASS",
+    "response": {
+      "msg": "Missing Authorization Header"
+    }
+  },
+  {
+    "test": "Unauthorized Transaction",
+    "status": 401,
+    "expected": 401,
+    "result": " PASS",
+    "response": {
+      "msg": "Missing Authorization Header"
+    }
+  }
+]

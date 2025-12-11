@@ -1,0 +1,796 @@
+﻿# app.py - Complete Backend Application
+import os
+import json
+import pandas as pd
+import joblib
+import xgboost as xgb
+import tensorflow as tf
+import numpy as np
+import traceback
+import logging
+from datetime import datetime, timedelta
+
+# Flask imports
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from flask_jwt_extended import (
+    JWTManager, create_access_token, jwt_required, 
+    get_jwt_identity, get_jwt
+)
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# Database imports
+from pymongo import MongoClient
+
+# Blockchain imports
+from web3 import Web3
+from web3.exceptions import TransactionNotFound, BlockNotFound
+
+# Twilio imports
+from twilio.rest import Client as TwilioClient
+from twilio.twiml.voice_response import VoiceResponse, Gather
+
+# Environment variables
+from dotenv import load_dotenv
+
+# --- 1. INITIALIZATION ---
+load_dotenv()
+
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "*"}})  # Configure appropriately for production
+
+# --- 2. CONFIGURATION ---
+app.config.from_mapping(
+    SECRET_KEY=os.environ.get('SECRET_KEY'),
+    JWT_SECRET_KEY=os.environ.get('JWT_SECRET_KEY'),
+    SQLALCHEMY_DATABASE_URI=os.environ.get('DATABASE_URL'),
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    JWT_ACCESS_TOKEN_EXPIRES=timedelta(hours=1)
+)
+
+# Initialize extensions
+db = SQLAlchemy(app)
+jwt = JWTManager(app)
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
+# --- 3. LOGGING CONFIGURATION ---
+os.makedirs('logs', exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.FileHandler('logs/app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# --- 4. SERVICE CONNECTIONS ---
+try:
+    # MongoDB connection
+    mongo_client = MongoClient(os.environ.get('MONGO_URI'))
+    mongo_db = mongo_client.get_database('fraud_logs_db')
+    logger.info("âœ… Connected to MongoDB")
+except Exception as e:
+    logger.error(f"âŒ MongoDB connection failed: {e}")
+    mongo_db = None
+
+try:
+    # Web3 blockchain connection
+    web3 = Web3(Web3.HTTPProvider(os.environ.get('INFURA_URL', 'http://127.0.0.1:7545')))
+    signer = web3.eth.account.from_key(os.environ.get('SIGNER_PRIVATE_KEY'))
+    web3.eth.default_account = signer.address
+    logger.info(f"âœ… Connected to blockchain. Account: {signer.address}")
+except Exception as e:
+    logger.error(f"âŒ Blockchain connection failed: {e}")
+    web3 = None
+
+try:
+    # Twilio client
+    twilio_client = TwilioClient(
+        os.environ.get('TWILIO_ACCOUNT_SID'),
+        os.environ.get('TWILIO_AUTH_TOKEN')
+    )
+    logger.info("âœ… Twilio client initialized")
+except Exception as e:
+    logger.error(f"âŒ Twilio initialization failed: {e}")
+    twilio_client = None
+
+# --- 5. AI MODELS LOADING ---
+logger.info("Loading AI models...")
+try:
+    model_path = 'models/trained_models/'
+    
+    # Load Isolation Forest
+    iso_forest = joblib.load(os.path.join(model_path, 'isolation_forest.joblib'))
+    logger.info("âœ… Isolation Forest loaded")
+    
+    # Load LSTM Autoencoder
+    lstm_autoencoder = tf.keras.models.load_model(
+        os.path.join(model_path, 'lstm_autoencoder.h5'),
+        custom_objects={'mae': tf.keras.losses.MeanAbsoluteError()}
+    )
+    logger.info("âœ… LSTM Autoencoder loaded")
+    
+    # Load XGBoost model
+    xgb_model = xgb.XGBClassifier()
+    xgb_model.load_model(os.path.join(model_path, 'xgb_risk_model.json'))
+    logger.info("âœ… XGBoost model loaded")
+    
+    # Load Scaler
+    scaler = joblib.load(os.path.join(model_path, 'scaler.joblib'))
+    logger.info("âœ… Scaler loaded")
+    
+    logger.info("ðŸŽ‰ All AI models loaded successfully")
+except Exception as e:
+    logger.error(f"âŒ FATAL: Could not load models. Error: {e}")
+    logger.error("Make sure you have run: bash scripts/train_all_models.sh")
+    exit(1)
+
+# --- 6. SMART CONTRACTS LOADING ---
+try:
+    # Load FraudMitigator contract
+    with open('build/contracts/FraudMitigator.json') as f:
+        mitigator_abi = json.load(f)['abi']
+    
+    mitigator_contract = web3.eth.contract(
+        address=os.environ.get('FRAUD_MITIGATOR_CONTRACT_ADDRESS'),
+        abi=mitigator_abi
+    )
+    logger.info("âœ… FraudMitigator contract loaded")
+    
+    # Load FraudLedger contract
+    with open('build/contracts/FraudLedger.json') as f:
+        ledger_abi = json.load(f)['abi']
+    
+    fraud_ledger_contract = web3.eth.contract(
+        address=os.environ.get('FRAUD_LEDGER_CONTRACT_ADDRESS'),
+        abi=ledger_abi
+    )
+    logger.info("âœ… FraudLedger contract loaded")
+except Exception as e:
+    logger.error(f"âŒ Smart contract loading failed: {e}")
+    logger.error("Make sure contracts are deployed and addresses are in .env")
+    mitigator_contract = None
+    fraud_ledger_contract = None
+
+# --- 7. DATABASE MODELS ---
+class User(db.Model):
+    __tablename__ = 'user'
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    phone_number = db.Column(db.String(20), nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    ethereum_address = db.Column(db.String(42), nullable=False)
+    is_frozen = db.Column(db.Boolean, default=False, nullable=False)
+    role = db.Column(db.String(20), default='user', nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'ethereum_address': self.ethereum_address,
+            'is_frozen': self.is_frozen,
+            'role': self.role
+        }
+
+
+class TransactionLog(db.Model):
+    __tablename__ = 'transaction_log'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    risk_score = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(100))
+    tx_hash = db.Column(db.String(66), nullable=True)
+    amount = db.Column(db.Float, nullable=True)
+    
+    user = db.relationship('User', backref=db.backref('transaction_logs', lazy=True))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'timestamp': self.timestamp.isoformat(),
+            'risk_score': self.risk_score,
+            'status': self.status,
+            'tx_hash': self.tx_hash,
+            'amount': self.amount
+        }
+
+
+# --- 8. HELPER FUNCTIONS ---
+def blockchain_transaction_with_retry(transaction_func, max_retries=3):
+    """Retry blockchain transactions with exponential backoff"""
+    for attempt in range(max_retries):
+        try:
+            return transaction_func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            wait_time = 2 ** attempt
+            logger.warning(f"Blockchain transaction failed (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
+            import time
+            time.sleep(wait_time)
+
+
+def create_sample_transaction_data(amount):
+    """Create sample transaction data for testing"""
+    return {
+        'Time': 172792.0,
+        'V1': -1.359807, 'V2': -0.072781, 'V3': 2.536347, 'V4': 1.378155,
+        'V5': -0.338321, 'V6': 0.462388, 'V7': 0.239599, 'V8': 0.098698,
+        'V9': 0.363787, 'V10': 0.090794, 'V11': -0.5516, 'V12': -0.617801,
+        'V13': -0.99139, 'V14': -0.311169, 'V15': 1.468177, 'V16': -0.470401,
+        'V17': 0.207971, 'V18': 0.025791, 'V19': 0.403993, 'V20': 0.251412,
+        'V21': -0.018307, 'V22': 0.277838, 'V23': -0.110474, 'V24': 0.066928,
+        'V25': 0.128539, 'V26': -0.189115, 'V27': 0.133558, 'V28': -0.021053,
+        'Amount': float(amount)
+    }
+
+
+# --- 9. API ENDPOINTS ---
+
+# Health Check
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """System health check endpoint"""
+    try:
+        from sqlalchemy import text
+        db.session.execute(text('SELECT 1'))
+        db.session.commit()
+        db_status = True
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        db_status = False
+    
+    blockchain_status = web3.is_connected() if web3 else False
+    
+    try:
+        mongo_status = mongo_client.server_info() is not None if mongo_db else False
+    except:
+        mongo_status = False
+    
+    overall_status = db_status and blockchain_status and mongo_status
+    
+    return jsonify({
+        'status': 'healthy' if overall_status else 'degraded',
+        'services': {
+            'database': db_status,
+            'blockchain': blockchain_status,
+            'mongodb': mongo_status
+        },
+        'timestamp': datetime.utcnow().isoformat()
+    }), 200 if overall_status else 503
+
+
+# User Registration
+@app.route('/api/register', methods=['POST'])
+@limiter.limit("5 per hour")
+def register():
+    """Register a new user"""
+    try:
+        data = request.get_json()
+        
+        # Validate input
+        required_fields = ['email', 'password', 'phone_number', 'address']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing field: {field}"}), 400
+        
+        # Check if user exists
+        if User.query.filter_by(email=data['email']).first():
+            return jsonify({"error": "Email already registered"}), 409
+        
+        # Determine role
+        role = 'admin' if data['email'] == 'admin@example.com' else 'user'
+        
+        # Create new user
+        new_user = User(
+            email=data['email'],
+            phone_number=data['phone_number'],
+            ethereum_address=data['address'],
+            role=role
+        )
+        new_user.set_password(data['password'])
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        logger.info(f"New user registered: {data['email']}")
+        return jsonify({"message": "User created successfully", "user": new_user.to_dict()}), 201
+    
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        db.session.rollback()
+        return jsonify({"error": "Registration failed"}), 500
+
+
+# User Login
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("10 per hour")
+def login():
+    """User login and JWT token generation"""
+    try:
+        data = request.get_json()
+        
+        if not data.get('email') or not data.get('password'):
+            return jsonify({"error": "Email and password required"}), 400
+        
+        user = User.query.filter_by(email=data['email']).first()
+        
+        if not user or not user.check_password(data['password']):
+            return jsonify({"error": "Invalid credentials"}), 401
+        
+        # Create JWT token
+        access_token = create_access_token(
+            identity=user.id,
+            additional_claims={'role': user.role}
+        )
+        
+        logger.info(f"User logged in: {user.email}")
+        return jsonify({
+            "access_token": access_token,
+            "user": user.to_dict()
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return jsonify({"error": "Login failed"}), 500
+
+
+# Transaction Submission and Fraud Check
+@app.route('/api/transaction', methods=['POST'])
+@jwt_required()
+@limiter.limit("20 per minute")
+def handle_transaction():
+    """Submit transaction for fraud detection"""
+    try:
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        if user.is_frozen:
+            return jsonify({"error": "Account is frozen"}), 403
+        
+        transaction_data = request.get_json()
+        
+        # Handle both full transaction data and simple amount
+        if 'V1' not in transaction_data:
+            amount = float(transaction_data.get('amount', 0))
+            full_transaction_data = create_sample_transaction_data(amount)
+        else:
+            full_transaction_data = transaction_data
+            amount = float(transaction_data.get('Amount', 0))
+        
+        logger.info(f"Processing transaction for user {user.email}, amount: ${amount}")
+        
+        # Prepare data for AI models
+        df = pd.DataFrame([full_transaction_data])
+        required_cols = list(full_transaction_data.keys())
+        
+        # Run AI prediction pipeline
+        logger.info("Running AI prediction pipeline...")
+        
+        # 1. Isolation Forest - Anomaly Detection
+        scaled_features = scaler.transform(df[required_cols])
+        df['anomaly_score'] = iso_forest.decision_function(scaled_features)
+        
+        # 2. LSTM Autoencoder - Behavior Profiling
+        reconstruction = lstm_autoencoder.predict(scaled_features, verbose=0)
+        mse = np.mean(np.power(scaled_features - reconstruction, 2), axis=1)
+        df['lstm_error'] = mse
+        
+        # 3. GNN - Placeholder (requires graph structure)
+        df['gnn_pred'] = 0
+        
+        # 4. XGBoost Meta-Model - Final Risk Score
+        features_for_xgb = df[required_cols + ['anomaly_score', 'lstm_error', 'gnn_pred']]
+        risk_score = float(xgb_model.predict_proba(features_for_xgb)[:, 1][0])
+        
+        logger.info(f"Risk score calculated: {risk_score:.2%}")
+        
+        # Determine status and actions
+        status_message = "Low Risk - Transaction Approved"
+        tx_hash_hex = None
+        
+        response_data = {
+            'status': status_message,
+            'risk_score': risk_score,
+            'amount': amount
+        }
+        
+        # High Risk (>85%)
+        if risk_score > 0.85:
+            status_message = "High Risk: Account Frozen & Reported to Blockchain"
+            user.is_frozen = True
+            
+            # Initiate voice call verification
+            if twilio_client:
+                try:
+                    public_url = os.environ.get('PUBLIC_URL', 'http://localhost:5000')
+                    webhook_url = f"{public_url}/api/voice-response/{user.id}"
+                    
+                    call = twilio_client.calls.create(
+                        to=user.phone_number,
+                        from_=os.environ.get('TWILIO_PHONE_NUMBER'),
+                        url=webhook_url
+                    )
+                    logger.info(f"Voice call initiated: {call.sid}")
+                except Exception as e:
+                    logger.error(f"Twilio call failed: {e}")
+            
+            # Report to blockchain
+            if mitigator_contract and web3:
+                try:
+                    def send_transaction():
+                        nonce = web3.eth.get_transaction_count(signer.address)
+                        tx = mitigator_contract.functions.reportSuspiciousActivity(
+                            user.ethereum_address,
+                            int(risk_score * 100),
+                            f"High Risk Transaction: ${amount}"
+                        ).build_transaction({
+                            'nonce': nonce,
+                            'gas': 2000000,
+                            'gasPrice': web3.to_wei('20', 'gwei'),
+                            'from': signer.address
+                        })
+                        
+                        signed_tx = web3.eth.account.sign_transaction(tx, private_key=os.environ.get('SIGNER_PRIVATE_KEY'))
+                        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+                        return tx_hash.hex()
+                    
+                    tx_hash_hex = blockchain_transaction_with_retry(send_transaction)
+                    logger.info(f"Blockchain transaction successful: {tx_hash_hex}")
+                    
+                except Exception as e:
+                    logger.error(f"Blockchain transaction failed: {e}")
+                    traceback.print_exc()
+            
+            response_data.update({
+                'status': status_message,
+                'tx_hash': tx_hash_hex,
+                'action': 'account_frozen'
+            })
+        
+        # Medium Risk (50-85%)
+        elif risk_score > 0.5:
+            status_message = "Medium Risk: Manual Review Required"
+            response_data.update({
+                'status': status_message,
+                'action': 'manual_review'
+            })
+        
+        # Save transaction log
+        new_log = TransactionLog(
+            user_id=user.id,
+            risk_score=risk_score,
+            tx_hash=tx_hash_hex,
+            status=status_message,
+            amount=amount
+        )
+        db.session.add(new_log)
+        db.session.commit()
+        
+        # Log to MongoDB
+        if mongo_db:
+            try:
+                mongo_db.transaction_logs.insert_one({
+                    "user_id": user.id,
+                    "user_email": user.email,
+                    "timestamp": datetime.utcnow(),
+                    "risk_score": risk_score,
+                    "status": status_message,
+                    "amount": amount,
+                    "details": full_transaction_data
+                })
+            except Exception as e:
+                logger.error(f"MongoDB logging failed: {e}")
+        
+        return jsonify(response_data), 200
+    
+    except Exception as e:
+        logger.error(f"Transaction processing error: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Transaction processing failed"}), 500
+
+
+# Get User Transactions
+@app.route('/api/transactions', methods=['GET'])
+@jwt_required()
+def get_transactions():
+    """Get transaction history for current user"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        logs = TransactionLog.query.filter_by(user_id=current_user_id)\
+            .order_by(TransactionLog.timestamp.desc()).all()
+        
+        results = [log.to_dict() for log in logs]
+        
+        return jsonify(results), 200
+    
+    except Exception as e:
+        logger.error(f"Error fetching transactions: {e}")
+        return jsonify({"error": "Could not fetch transactions"}), 500
+
+
+# Get Risk Score for Specific Transaction
+@app.route('/api/risk-score/<int:transaction_id>', methods=['GET'])
+@jwt_required()
+def get_risk_score(transaction_id):
+    """Get risk score for specific transaction"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        transaction = TransactionLog.query.filter_by(
+            id=transaction_id,
+            user_id=current_user_id
+        ).first()
+        
+        if not transaction:
+            return jsonify({"error": "Transaction not found"}), 404
+        
+        return jsonify(transaction.to_dict()), 200
+    
+    except Exception as e:
+        logger.error(f"Error fetching risk score: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# Get All Transactions (Admin Only)
+@app.route('/api/admin/all-logs', methods=['GET'])
+@jwt_required()
+def get_all_transactions():
+    """Get all transactions (Admin only)"""
+    try:
+        claims = get_jwt()
+        if claims.get('role') != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        
+        all_logs = db.session.query(TransactionLog, User)\
+            .join(User, TransactionLog.user_id == User.id)\
+            .order_by(TransactionLog.timestamp.desc()).all()
+        
+        results = []
+        for log, user in all_logs:
+            log_dict = log.to_dict()
+            log_dict['user_email'] = user.email
+            results.append(log_dict)
+        
+        return jsonify(results), 200
+    
+    except Exception as e:
+        logger.error(f"Error fetching all logs: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# Get Blockchain Logs
+@app.route('/api/blockchain/logs', methods=['GET'])
+@jwt_required()
+def get_blockchain_logs():
+    """Fetch blockchain transaction logs"""
+    try:
+        current_user_id = get_jwt_identity()
+        user = User.query.get(current_user_id)
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # Get transactions with blockchain tx_hash
+        transactions = TransactionLog.query.filter_by(user_id=current_user_id)\
+            .filter(TransactionLog.tx_hash.isnot(None)).all()
+        
+        blockchain_logs = []
+        
+        if web3:
+            for txn in transactions:
+                try:
+                    receipt = web3.eth.get_transaction_receipt(txn.tx_hash)
+                    blockchain_logs.append({
+                        "transaction_id": txn.id,
+                        "tx_hash": txn.tx_hash,
+                        "block_number": receipt['blockNumber'],
+                        "gas_used": receipt['gasUsed'],
+                        "status": "success" if receipt['status'] == 1 else "failed",
+                        "timestamp": txn.timestamp.isoformat()
+                    })
+                except Exception as e:
+                    logger.error(f"Error fetching receipt for {txn.tx_hash}: {e}")
+                    continue
+        
+        return jsonify(blockchain_logs), 200
+    
+    except Exception as e:
+        logger.error(f"Error fetching blockchain logs: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# Initiate Voice Call (Admin Only)
+@app.route('/api/voice-call/initiate', methods=['POST'])
+@jwt_required()
+def initiate_voice_call():
+    """Manually initiate voice call (Admin only)"""
+    try:
+        claims = get_jwt()
+        if claims.get('role') != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        
+        data = request.get_json()
+        user_id = data.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        if not twilio_client:
+            return jsonify({"error": "Twilio service unavailable"}), 503
+        
+        public_url = os.environ.get('PUBLIC_URL', 'http://localhost:5000')
+        webhook_url = f"{public_url}/api/voice-response/{user.id}"
+        
+        call = twilio_client.calls.create(
+            to=user.phone_number,
+            from_=os.environ.get('TWILIO_PHONE_NUMBER'),
+            url=webhook_url
+        )
+        
+        logger.info(f"Voice call initiated for {user.email}, SID: {call.sid}")
+        return jsonify({"message": "Voice call initiated", "call_sid": call.sid}), 200
+    
+    except Exception as e:
+        logger.error(f"Error initiating voice call: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# Voice Response Handler
+@app.route('/api/voice-response/<int:user_id>', methods=['POST'])
+def voice_response(user_id):
+    """Handle Twilio voice call response"""
+    response = VoiceResponse()
+    
+    action_url = f"/api/handle-keypad/{user_id}"
+    gather = Gather(num_digits=1, action=action_url, method='POST')
+    
+    gather.say(
+        "A high risk transaction was detected on your account. "
+        "Press 1 to confirm this transaction was safe. "
+        "Press 2 to report it as fraud."
+    )
+    
+    response.append(gather)
+    response.say("We did not receive a response. Goodbye.")
+    
+    return str(response)
+
+
+# Handle Keypad Input
+@app.route('/api/handle-keypad/<int:user_id>', methods=['POST'])
+def handle_keypad(user_id):
+    """Handle keypad input from voice call"""
+    digits = request.form.get('Digits')
+    response = VoiceResponse()
+    
+    user = User.query.get(user_id)
+    
+    if not user:
+        response.say("Sorry, we could not find your account.")
+        return str(response)
+    
+    if digits == '1':
+        user.is_frozen = False
+        db.session.commit()
+        logger.info(f"User {user.email} confirmed transaction - Account unfrozen")
+        response.say("Thank you for confirming. Your account has been unlocked.")
+    elif digits == '2':
+        logger.info(f"User {user.email} reported fraud - Account remains frozen")
+        response.say(
+            "Thank you for your report. Your account will remain frozen "
+            "for your protection. Please contact customer support."
+        )
+    else:
+        response.say("Invalid input. Your account remains frozen for your protection.")
+    
+    return str(response)
+
+
+# Freeze Account (Admin Only)
+@app.route('/api/user/freeze', methods=['PUT'])
+@jwt_required()
+def freeze_user_account():
+    """Freeze user account (Admin only)"""
+    try:
+        claims = get_jwt()
+        if claims.get('role') != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        
+        data = request.get_json()
+        user_id = data.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        user.is_frozen = True
+        db.session.commit()
+        
+        logger.info(f"Account frozen for user {user.email} by admin")
+        return jsonify({"message": f"Account for {user.email} has been frozen"}), 200
+    
+    except Exception as e:
+        logger.error(f"Error freezing account: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# Unfreeze Account (Admin Only)
+@app.route('/api/user/unfreeze', methods=['PUT'])
+@jwt_required()
+def unfreeze_user_account():
+    """Unfreeze user account (Admin only)"""
+    try:
+        claims = get_jwt()
+        if claims.get('role') != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        
+        data = request.get_json()
+        user_id = data.get('user_id')
+        user = User.query.get(user_id)
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        user.is_frozen = False
+        db.session.commit()
+        
+        logger.info(f"Account unfrozen for user {user.email} by admin")
+        return jsonify({"message": f"Account for {user.email} has been unfrozen"}), 200
+    
+    except Exception as e:
+        logger.error(f"Error unfreezing account: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# --- 10. ERROR HANDLERS ---
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Resource not found'}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    logger.error(f"Internal error: {error}")
+    return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.errorhandler(429)
+def rate_limit_exceeded(error):
+    return jsonify({'error': 'Rate limit exceeded. Please try again later.'}), 429
+
+
+# --- 11. APPLICATION ENTRY POINT ---
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        logger.info("Database tables created/verified")
+    
+    logger.info("ðŸš€ Starting Flask application...")
+    app.run(host='0.0.0.0', port=5000, debug=True)
+

@@ -25,16 +25,20 @@ contract FraudLedger {
 
     function reportFraudWithProof(
         string memory _transactionIdentifier,
-        uint[1] memory _publicInputs,
+        uint[2] memory _publicInputs,
         uint[2] memory a,
         uint[2][2] memory b,
         uint[2] memory c
     ) public {
-        // Require that the ZKP is valid before proceeding
-        require(verifier.verifyTx(
-            [a[0], a[1], b[0][0], b[0][1], b[1][0], b[1][1], c[0], c[1]],
-            _publicInputs
-        ), "ZKP verification failed.");
+        // Create Proof struct
+        Verifier.Proof memory proof = Verifier.Proof({
+            a: Pairing.G1Point(a[0], a[1]),
+            b: Pairing.G2Point([b[0][0], b[0][1]], [b[1][0], b[1][1]]),
+            c: Pairing.G1Point(c[0], c[1])
+        });
+        
+        // Verify ZKP
+        require(verifier.verifyTx(proof, _publicInputs), "ZKP verification failed.");
 
         reportCounter++;
         secureFraudReports[reportCounter] = SecureFraudReport(

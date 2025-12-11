@@ -1,5 +1,3 @@
-// src/main.jsx
-
 import React, { useState, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -15,14 +13,12 @@ const AppWrapper = () => {
         setTheme(theme === 'dark' ? 'light' : 'dark');
     };
 
-    // This makes sure the theme object doesn't get recreated on every render
     const currentTheme = useMemo(() => (theme === 'dark' ? darkTheme : lightTheme), [theme]);
 
     return (
         <ThemeProvider theme={currentTheme}>
             <AuthProvider>
                 <Router>
-                    {/* Pass theme and toggleTheme down to the App */}
                     <App theme={theme} toggleTheme={toggleTheme} />
                 </Router>
             </AuthProvider>

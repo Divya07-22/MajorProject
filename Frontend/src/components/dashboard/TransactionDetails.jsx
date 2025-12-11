@@ -1,16 +1,16 @@
-// src/components/dashboard/TransactionDetails.jsx
-
 import React, { useState } from 'react';
 import Card from '../ui/Card';
 import styled from 'styled-components';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import api from '../../services/api';
+import toast from 'react-hot-toast';
+import { validateAmount, validateEthAddress } from '../../utils/validation';
 
 const ErrorMessage = styled.p`
   color: ${({ theme }) => theme.colors.danger};
   font-size: 0.9rem;
-  margin-top: -10px;
+  margin-top: -8px;
   margin-bottom: 10px;
 `;
 
@@ -18,35 +18,35 @@ const TransactionDetails = ({ setResult }) => {
     const [amount, setAmount] = useState('');
     const [recipient, setRecipient] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
     const handleTransaction = async (e) => {
         e.preventDefault();
         setError('');
 
-        if (!amount || parseFloat(amount) <= 0) {
-            setError('Please enter a valid, positive amount.');
+        if (!validateAmount(amount)) {
+            setError('Amount must be between 0 and 10,000,000');
             return;
         }
-        if (!recipient.startsWith('0x') || recipient.length !== 42) {
-            setError('Please enter a valid Ethereum address (starting with 0x).');
+        if (!validateEthAddress(recipient)) {
+            setError('Invalid Ethereum address (0x + 40 hex characters)');
             return;
         }
 
-        // --- THIS IS THE FIX ---
-        // We now send only the amount, as the new app.py is smart enough
-        // to handle the rest.
-        const transactionData = {
-            amount: parseFloat(amount)
-        };
-        // --- END OF FIX ---
-
+        setLoading(true);
         try {
             setResult({ isLoading: true });
-            const response = await api.post('/transaction', transactionData);
+            const response = await api.post('/transaction', {
+                amount: parseFloat(amount)
+            });
             setResult(response.data);
+            toast.success('Transaction analyzed!');
         } catch (err) {
-            console.error("Transaction failed", err);
-            setResult({ error: err.response?.data?.error || "Failed to process transaction." });
+            console.error('Transaction failed', err);
+            setResult({ error: err.response?.data?.error || 'Failed to process transaction.' });
+            toast.error('Transaction failed');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -55,20 +55,22 @@ const TransactionDetails = ({ setResult }) => {
             <h3>Initiate New Transaction</h3>
             <form onSubmit={handleTransaction} style={{marginTop: '16px'}}>
                 <Input 
-                    placeholder="Recipient's Ethereum Address" 
+                    placeholder="Recipient Ethereum Address (0x...)" 
                     value={recipient} 
                     onChange={e => setRecipient(e.target.value)}
-                    error={error.includes('Address')}
+                    error={error.includes('address')}
                 />
                 <Input 
                     type="number" 
-                    placeholder="Amount" 
+                    placeholder="Amount (₹)" 
                     value={amount} 
                     onChange={e => setAmount(e.target.value)}
-                    error={error.includes('amount')}
+                    error={error.includes('Amount')}
                 />
                 {error && <ErrorMessage>{error}</ErrorMessage>}
-                <Button type="submit">Process Transaction</Button>
+                <Button type="submit" disabled={loading}>
+                    {loading ? 'Processing...' : 'Analyze Transaction'}
+                </Button>
             </form>
         </Card>
     );

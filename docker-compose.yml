@@ -1,0 +1,177 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: fraud_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fraud_prevention_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fraud_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB
+  mongo:
+    image: mongo:7
+    container_name: fraud_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - fraud_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: fraud_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    volumes:
+      - redis_data:/data
+    networks:
+      - fraud_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Ganache Blockchain
+  ganache:
+    image: trufflesuite/ganache:latest
+    container_name: fraud_ganache
+    ports:
+      - "7545:8545"
+    command: >
+      --accounts 10
+      --defaultBalanceEther 1000
+      --networkId 5777
+      --host 0.0.0.0
+      --gasLimit 10000000
+    networks:
+      - fraud_network
+
+  # Backend API (with scaling support)
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: fraud_backend
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/fraud_prevention_db
+      - MONGO_URI=mongodb://mongo:27017/fraud_logs_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis123}
+      - INFURA_URL=http://ganache:8545
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-this}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-jwt-secret-change-this}
+      - FLASK_ENV=production
+      - SIGNER_PRIVATE_KEY=${SIGNER_PRIVATE_KEY}
+      - FRAUD_MITIGATOR_CONTRACT_ADDRESS=${FRAUD_MITIGATOR_CONTRACT_ADDRESS}
+      - FRAUD_LEDGER_CONTRACT_ADDRESS=${FRAUD_LEDGER_CONTRACT_ADDRESS}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+      - POLYGON_RPC_URL=${POLYGON_RPC_URL:-https://rpc-mumbai.maticvigil.com/}
+      - POLYGON_CHAIN_ID=${POLYGON_CHAIN_ID:-80001}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ganache:
+        condition: service_started
+    volumes:
+      - ./Backend/models:/app/models
+      - ./Backend/logs:/app/logs
+      - ./Backend/build:/app/build
+    networks:
+      - fraud_network
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fraud_frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:5000
+    depends_on:
+      - backend
+    networks:
+      - fraud_network
+    restart: unless-stopped
+
+  # NGINX Load Balancer & Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: fraud_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - fraud_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  fraud_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+    driver: local
+  mongo_data:
+    driver: local
+  redis_data:
+    driver: local

@@ -10,6 +10,7 @@ contract FraudMitigator {
 
     event AccountFrozen(address indexed userAccount);
     event MfaTriggered(string transactionIdentifier);
+    event SuspiciousActivityReported(address indexed userAccount, uint256 riskScore, string description);
 
     constructor(address _ledgerAddress) {
         fraudLedger = FraudLedger(_ledgerAddress);
@@ -17,7 +18,7 @@ contract FraudMitigator {
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only the owner (the API server) can call this function.");
+        require(msg.sender == owner, "Only the owner can call this function.");
         _;
     }
 
@@ -32,21 +33,29 @@ contract FraudMitigator {
         emit MfaTriggered(_transactionIdentifier);
     }
 
+    function reportSuspiciousActivity(
+        address userAccount,
+        uint256 riskScore,
+        string memory description
+    ) public onlyOwner {
+        freezeAccount(userAccount);
+        emit SuspiciousActivityReported(userAccount, riskScore, description);
+    }
+
     function executeResponse(
         uint256 riskScore,
         address userAccount,
         string memory transactionIdentifier,
-        uint[1] memory publicInputs,
+        uint[2] memory publicInputs,  // CHANGED from uint[1] to uint[2]
         uint[2] memory a,
         uint[2][2] memory b,
         uint[2] memory c
     ) public onlyOwner {
-        if (riskScore >= 85) { // High Risk
+        if (riskScore >= 85) {
             freezeAccount(userAccount);
             fraudLedger.reportFraudWithProof(transactionIdentifier, publicInputs, a, b, c);
-        } else if (riskScore >= 60) { // Medium Risk
+        } else if (riskScore >= 60) {
             triggerMfa(transactionIdentifier);
         }
-        // If low risk, do nothing.
     }
 }

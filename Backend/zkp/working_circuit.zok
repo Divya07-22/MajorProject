@@ -1,0 +1,4 @@
+def main(private field riskScore, field threshold) -> field {
+    field result = if riskScore >= threshold then 1 else 0 fi;
+    return result;
+}

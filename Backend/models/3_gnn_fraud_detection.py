@@ -1,5 +1,6 @@
 # models/3_gnn_fraud_detection.py
 
+
 import pandas as pd
 import numpy as np
 import torch
@@ -11,10 +12,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import joblib
 
+
 print("Starting Model 3: Graph Neural Network (GNN) Fraud Ring Detection...")
+
 
 # --- 1. Data Loading and Preprocessing ---
 df = pd.read_csv('data/creditcard.csv')
+
 
 # For demonstration, we'll use a smaller, balanced sample of the data to build the graph.
 # Using the full dataset would be very computationally expensive.
@@ -22,7 +26,9 @@ df_fraud = df[df['Class'] == 1]
 df_normal = df[df['Class'] == 0].sample(n=len(df_fraud) * 5, random_state=42) # 5:1 ratio
 df_sample = pd.concat([df_fraud, df_normal]).sort_values(by='Time').reset_index(drop=True)
 
+
 print(f"Running GNN on a sample of {len(df_sample)} transactions for efficiency.")
+
 
 # Scale features
 scaler = StandardScaler()
@@ -30,11 +36,13 @@ df_sample['scaled_amount'] = scaler.fit_transform(df_sample['Amount'].values.res
 features = df_sample.drop(['Time', 'Amount', 'Class'], axis=1).values
 labels = df_sample['Class'].values
 
+
 # --- 2. Graph Construction ---
 # We create edges between transactions that occur within a small time delta (e.g., 10 seconds)
 edge_list = []
 time_values = df_sample['Time'].values
 time_delta = 10 
+
 
 for i in range(len(df_sample)):
     for j in range(i + 1, len(df_sample)):
@@ -42,14 +50,18 @@ for i in range(len(df_sample)):
             break # Since the data is sorted by time, we can stop searching
         edge_list.append([i, j])
 
+
 print(f"Graph constructed with {len(df_sample)} nodes and {len(edge_list)} edges.")
+
 
 # Convert to PyTorch Geometric format
 edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
 x = torch.tensor(features, dtype=torch.float)
 y = torch.tensor(labels, dtype=torch.long)
 
+
 data = Data(x=x, edge_index=edge_index, y=y)
+
 
 # Create train/test masks for nodes
 train_mask, test_mask = train_test_split(range(len(df_sample)), test_size=0.2, random_state=42, stratify=y)
@@ -59,12 +71,14 @@ data.train_mask[train_mask] = True
 data.test_mask[test_mask] = True
 
 
+
 # --- 3. GNN Model Definition ---
 class GCN(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = GCNConv(data.num_node_features, 16)
         self.conv2 = GCNConv(16, 2) # Output dimension is 2 (fraud, not_fraud)
+
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -74,10 +88,12 @@ class GCN(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return F.log_softmax(x, dim=1)
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = GCN().to(device)
 data = data.to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+
 
 # --- 4. Training Loop ---
 model.train()
@@ -90,7 +106,9 @@ for epoch in range(200):
     if epoch % 20 == 0:
         print(f'Epoch {epoch}: Loss: {loss.item():.4f}')
 
+
 print("GNN model trained.")
+
 
 # --- 5. Evaluation and Saving ---
 model.eval()
@@ -99,15 +117,28 @@ correct = (pred[data.test_mask] == data.y[data.test_mask]).sum()
 acc = int(correct) / int(data.test_mask.sum())
 print(f'Accuracy on test nodes: {acc:.4f}')
 
+
 # Save the model
 torch.save(model.state_dict(), 'models/trained_models/gnn_model.pth')
 print("Model saved to models/trained_models/gnn_model.pth")
 
-# Save predictions for the final meta-model
-# We'll create a dataframe that matches the original full dataframe's index
+
+# --- FIXED: Save predictions for the final meta-model ---
 gnn_predictions = pred.cpu().numpy()
 df_sample['gnn_pred'] = gnn_predictions
-final_gnn_output = df_sample[['gnn_pred']].reindex(df.index, fill_value=-1) # -1 for nodes not in the sample
+
+# Create DataFrame with proper indexing - using 0 instead of -1 for non-sampled nodes
+final_gnn_output = pd.DataFrame(index=df.index)
+final_gnn_output['gnn_pred'] = 0  # Default to 0 (neutral) for nodes not in sample
+
+# Update with actual GNN predictions for sampled nodes
+sample_to_original_idx = df_sample.index.tolist()
+for sample_idx, pred_val in enumerate(gnn_predictions):
+    original_idx = sample_to_original_idx[sample_idx]
+    if original_idx in final_gnn_output.index:
+        final_gnn_output.loc[original_idx, 'gnn_pred'] = int(pred_val)
+
 final_gnn_output.to_csv('data/3_gnn_results.csv', index=False)
 print("Results saved to data/3_gnn_results.csv")
+print(f"✅ Predictions: {len(df_sample)} nodes predicted, {len(df) - len(df_sample)} nodes defaulted to 0")
 print("Model 3 complete.")

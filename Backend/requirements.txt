@@ -1,6 +1,8 @@
 Flask
 Flask-SQLAlchemy
 Flask-JWT-Extended
+Flask-CORS
+Flask-Limiter
 psycopg2-binary
 pymongo
 python-dotenv
@@ -16,3 +18,8 @@ torch
 torchvision
 torchaudio
 torch-geometric
+phe
+marshmallow
+gunicorn
+redis
+gunicorn==21.2.0
