@@ -47,10 +47,10 @@ gunicorn.pid
 *.sqlite3
 
 # Models and Data
-models/trained_models/*.joblib
-models/trained_models/*.h5
-models/trained_models/*.pth
-models/trained_models/*.json
+#models/trained_models/*.joblib
+#models/trained_models/*.h5
+#models/trained_models/*.pth
+#models/trained_models/*.json
 data/creditcard.csv
 data/*.csv
 
