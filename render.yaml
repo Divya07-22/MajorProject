@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: fraud-detection-backend
+    env: python
+    buildCommand: "cd Backend && pip install -r requirements.txt"
+    startCommand: "cd Backend && gunicorn app:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: DATABASE_URL
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+
+  - type: web
+    name: fraud-detection-frontend
+    env: node
+    buildCommand: "cd Frontend && npm install && npm run build"
+    startCommand: "cd Frontend && npm start"
