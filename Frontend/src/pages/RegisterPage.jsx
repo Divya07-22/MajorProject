@@ -93,7 +93,6 @@ const RegisterPage = () => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
         
-        // Real-time validation
         if (touched[name]) {
             const error = validateField(name, value);
             setErrors(prev => ({ ...prev, [name]: error }));
@@ -110,7 +109,6 @@ const RegisterPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        // Validate all fields
         const newErrors = {};
         Object.keys(formData).forEach(key => {
             const error = validateField(key, formData[key]);

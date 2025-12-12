@@ -9,6 +9,7 @@ import Input from '../components/ui/Input';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { validateEmail } from '../utils/validation';
+import api from '../api';
 
 const LoginWrapper = styled.div`
     min-height: 100vh;
@@ -92,24 +93,11 @@ const AdminLoginPage = () => {
 
         setLoading(true);
         try {
-            const response = await fetch('http://localhost:5000/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
+            const response = await api.post('/login', { email, password });
+            const data = response.data;
 
-            const data = await response.json();
+            console.log('Login response:', data);
 
-            console.log('Login response:', data); // Debug log
-
-            if (!response.ok) {
-                setError(data.error || 'Login failed');
-                toast.error('Login failed');
-                setLoading(false);
-                return;
-            }
-
-            // Check if user has admin role
             if (!data.user || data.user.role !== 'admin') {
                 setError('Access Denied: Admin privileges required');
                 toast.error('Not an admin account');
@@ -117,18 +105,16 @@ const AdminLoginPage = () => {
                 return;
             }
 
-            // Store credentials
-            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('access_token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
             
-            // Call useAuth login
             await login({ email, password });
             
             toast.success('Admin login successful!');
             navigate('/admin/dashboard');
         } catch (err) {
             console.error('Login error:', err);
-            setError('Admin authentication failed');
+            setError(err.response?.data?.error || 'Admin authentication failed');
             toast.error('Login failed');
         } finally {
             setLoading(false);
