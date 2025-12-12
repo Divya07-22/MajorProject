@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://majorproject-ylri.onrender.com',
 });
 
 api.interceptors.request.use(
