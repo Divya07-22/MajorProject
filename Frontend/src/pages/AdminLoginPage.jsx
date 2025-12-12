@@ -9,7 +9,7 @@ import Input from '../components/ui/Input';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { validateEmail } from '../utils/validation';
-import api from '../api';
+import api from '../services/api';
 
 const LoginWrapper = styled.div`
     min-height: 100vh;
