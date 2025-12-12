@@ -36,16 +36,35 @@ from did_handler import did_handler
 from transformer_detector import transformer_detector
 from polygon_integration import PolygonLayer2
 
+
 # ✅ Load environment variables and strip whitespace
 load_dotenv()
+
 
 # ✅ Strip whitespace from all environment variables to prevent hidden newlines
 for key in list(os.environ.keys()):
     if isinstance(os.environ[key], str):
         os.environ[key] = os.environ[key].strip()
 
+
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+# ✅ FIXED CORS - Allow Vercel preview deployments dynamically
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "https://major-project-xi-teal.vercel.app",  # Production
+            "https://*.vercel.app",  # All Vercel preview deployments
+            "http://localhost:5173",  # Local development
+            "http://localhost:3000"   # Alternative local port
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True,
+        "expose_headers": ["Content-Type", "Authorization"]
+    }
+})
+
 app.config.from_mapping(
     SECRET_KEY=os.environ.get('SECRET_KEY'),
     JWT_SECRET_KEY=os.environ.get('JWT_SECRET_KEY'),
@@ -63,6 +82,7 @@ limiter = Limiter(
 )
 
 
+
 # --- 3. LOGGING CONFIGURATION ---
 os.makedirs('logs', exist_ok=True)
 logging.basicConfig(
@@ -76,6 +96,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+
 # --- 4. SERVICE CONNECTIONS ---
 try:
     mongo_client = MongoClient(os.environ.get('MONGO_URI'))
@@ -84,6 +105,7 @@ try:
 except Exception as e:
     logger.error(f"[ERROR] MongoDB connection failed: {e}")
     mongo_db = None
+
 
 
 try:
@@ -96,6 +118,7 @@ except Exception as e:
     web3 = None
 
 
+
 try:
     twilio_client = TwilioClient(
         os.environ.get('TWILIO_ACCOUNT_SID'),
@@ -105,6 +128,7 @@ try:
 except Exception as e:
     logger.error(f"[ERROR] Twilio initialization failed: {e}")
     twilio_client = None
+
 
 
 # --- 5. AI MODELS LOADING ---
@@ -140,6 +164,7 @@ except Exception as e:
     logger.error(f"[ERROR] FATAL: Could not load models. Error: {e}")
     exit(1)
 
+
 # --- 6. SMART CONTRACTS LOADING ---
 try:
     with open('build/contracts/FraudMitigator.json') as f:
@@ -171,6 +196,7 @@ except Exception as e:
     mitigator_abi = []
 
 
+
 # ✅ POLYGON LAYER-2 INTEGRATION
 try:
     # ✅ Strip whitespace from contract address and private key
@@ -190,6 +216,7 @@ try:
 except Exception as e:
     logger.warning(f"[WARNING] Polygon L2 disabled: {e}")
     polygon_l2 = None
+
 
 
 # --- 7. DATABASE MODELS ---
@@ -221,6 +248,7 @@ class User(db.Model):
             'role': self.role
         }
 
+
 class TransactionLog(db.Model):
     __tablename__ = 'transaction_log'
     id = db.Column(db.Integer, primary_key=True)
@@ -250,6 +278,7 @@ class TransactionLog(db.Model):
         }
 
 
+
 # --- 8. HELPER FUNCTIONS ---
 def blockchain_transaction_with_retry(transaction_func, max_retries=3):
     for attempt in range(max_retries):
@@ -262,6 +291,7 @@ def blockchain_transaction_with_retry(transaction_func, max_retries=3):
             logger.warning(f"Blockchain transaction failed (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
             import time
             time.sleep(wait_time)
+
 
 
 def create_sample_transaction_data(amount):
@@ -291,7 +321,9 @@ def create_sample_transaction_data(amount):
         }
 
 
+
 # --- 9. API ENDPOINTS ---
+
 
 
 @app.route('/api/health', methods=['GET'])
@@ -307,11 +339,13 @@ def health_check():
         logger.error(f"Database health check failed: {e}")
 
 
+
     blockchain_status = False
     try:
         blockchain_status = web3.is_connected() if web3 else False
     except Exception as e:
         logger.error(f"Blockchain health check failed: {e}")
+
 
 
     mongo_status = False
@@ -322,7 +356,9 @@ def health_check():
         logger.error(f"MongoDB health check failed: {e}")
 
 
+
     overall_status = db_status and blockchain_status and mongo_status
+
 
 
     return jsonify({
@@ -334,6 +370,7 @@ def health_check():
         },
         'timestamp': datetime.now(timezone.utc).isoformat()
     }), 200 if overall_status else 503
+
 
 
 @app.route('/api/register', methods=['POST'])
@@ -351,7 +388,9 @@ def register():
             return jsonify({"error": "Email already registered"}), 409
 
 
+
         role = 'user'
+
 
 
         new_user = User(
@@ -363,19 +402,24 @@ def register():
         new_user.set_password(data['password'])
 
 
+
         db.session.add(new_user)
         db.session.commit()
+
 
 
         identity_proof = zkp_handler.create_identity_proof(new_user.id, data['address'])
         new_user.zkp_identity_proof = identity_proof['commitment']
 
 
+
         did_document = did_handler.create_did_document(new_user.id, data['address'], data['email'])
         new_user.did_document = json.dumps(did_document)
 
 
+
         db.session.commit()
+
 
 
         logger.info(f"New user registered: {data['email']}")
@@ -384,10 +428,12 @@ def register():
         return jsonify({"message": "User created successfully", "user": new_user.to_dict()}), 201
 
 
+
     except Exception as e:
         db.session.rollback()
         logger.error(f"Registration error: {str(e)}")
         return jsonify({"error": str(e)}), 400
+
 
 
 @app.route('/api/admin/register', methods=['POST'])
@@ -431,6 +477,7 @@ def register_admin():
         return jsonify({"error": str(e)}), 400
 
 
+
 @app.route('/api/login', methods=['POST'])
 @limiter.limit("10 per hour")
 def login():
@@ -459,6 +506,7 @@ def login():
     except Exception as e:
         logger.error(f"Login error: {e}")
         return jsonify({"error": "Login failed"}), 500
+
 
 
 @app.route('/api/transaction', methods=['POST'])
@@ -498,6 +546,7 @@ def handle_transaction():
         isolation_risk = float((df['anomaly_score'].values[0] + 1) / 2)
 
 
+
         # 2. Random Forest
         rf_features = df[required_cols]
         rf_risk = float(rf_model.predict_proba(rf_features)[:, 1][0])
@@ -517,6 +566,7 @@ def handle_transaction():
         else:
             lstm_risk = 0.5
             logger.info("LSTM not available - using neutral score")
+
 
 
         # 4. Transformer
@@ -596,6 +646,7 @@ def handle_transaction():
         logger.info(f"Final risk score calculated: {risk_score:.2%}")
 
 
+
         tx_hash_hex = None
         
         if risk_score < 0.30:
@@ -626,6 +677,7 @@ def handle_transaction():
             action = "verification_required"
 
 
+
             if twilio_client:
                 try:
                     public_url = os.environ.get('PUBLIC_URL', 'http://localhost:5000')
@@ -639,6 +691,7 @@ def handle_transaction():
                     logger.info(f"Voice call initiated (HIGH RISK): {call.sid}")
                 except Exception as e:
                     logger.error(f"Twilio call failed: {e}")
+
 
 
             # ✅ USE POLYGON LAYER-2 INSTEAD OF ETHEREUM (100x cheaper!)
@@ -733,6 +786,7 @@ def handle_transaction():
         return jsonify({"error": "Transaction processing failed"}), 500
 
 
+
 @app.route('/api/transactions', methods=['GET'])
 @jwt_required()
 def get_transactions():
@@ -749,6 +803,7 @@ def get_transactions():
     except Exception as e:
         logger.error(f"Error fetching transactions: {e}")
         return jsonify({"error": "Could not fetch transactions"}), 500
+
 
 
 @app.route('/api/risk-score/<int:transaction_id>', methods=['GET'])
@@ -770,6 +825,7 @@ def get_risk_score(transaction_id):
     except Exception as e:
         logger.error(f"Error fetching risk score: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route('/api/admin/all-logs', methods=['GET'])
@@ -800,6 +856,7 @@ def get_all_transactions():
         logger.error(f"Error fetching all logs: {e}")
         traceback.print_exc()
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route('/api/blockchain/logs', methods=['GET'])
@@ -840,6 +897,7 @@ def get_blockchain_logs():
         return jsonify({"error": "Internal server error"}), 500
 
 
+
 @app.route('/api/voice-call/initiate', methods=['POST'])
 @jwt_required()
 def initiate_voice_call():
@@ -851,6 +909,7 @@ def initiate_voice_call():
         return jsonify({"message": "Voice call working", "status": "success"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/api/voice-response/<int:user_id>', methods=['POST'])
@@ -870,6 +929,7 @@ def voice_response(user_id):
     response.say("We did not receive a response. Goodbye.")
     
     return str(response)
+
 
 
 @app.route('/api/handle-keypad/<int:user_id>', methods=['POST'])
@@ -900,6 +960,7 @@ def handle_keypad(user_id):
     return str(response)
 
 
+
 @app.route('/api/user/freeze', methods=['PUT'])
 @jwt_required()
 def freeze_user_account():
@@ -924,6 +985,7 @@ def freeze_user_account():
     except Exception as e:
         logger.error(f"Error freezing account: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route('/api/user/unfreeze', methods=['PUT'])
@@ -952,6 +1014,7 @@ def unfreeze_user_account():
         return jsonify({"error": "Internal server error"}), 500
 
 
+
 @app.route('/api/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
@@ -974,6 +1037,7 @@ def get_profile():
     except Exception as e:
         logger.error(f'Get profile error: {e}')
         return jsonify({'error': 'Failed to get profile'}), 500
+
 
 
 @app.route('/api/profile', methods=['PUT'])
@@ -1001,6 +1065,7 @@ def update_profile():
         return jsonify({'error': 'Failed to update profile'}), 500
 
 
+
 # ✅ NEW POLYGON ENDPOINTS
 @app.route('/api/blockchain/cost-comparison', methods=['GET'])
 @jwt_required()
@@ -1022,6 +1087,7 @@ def get_cost_comparison():
     except Exception as e:
         logger.error(f"Cost comparison error: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 
 @app.route('/api/blockchain/history', methods=['GET'])
@@ -1053,10 +1119,12 @@ def get_blockchain_history():
         return jsonify({'error': str(e)}), 500
 
 
+
 # --- 10. ERROR HANDLERS ---
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Resource not found'}), 404
+
 
 
 @app.errorhandler(500)
@@ -1066,9 +1134,11 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 
+
 @app.errorhandler(429)
 def rate_limit_exceeded(error):
     return jsonify({'error': 'Rate limit exceeded. Please try again later.'}), 429
+
 
 
 # --- 11. APPLICATION ENTRY POINT ---
