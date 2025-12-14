@@ -7,14 +7,6 @@
 
 > An enterprise-grade fraud detection platform combining ensemble machine learning, Ethereum blockchain, and zero-knowledge cryptography to achieve 99.6% fraud detection accuracy with complete privacy preservation.
 
-## 🌐 Live Demo
-
-**Frontend**: [Your Deployed URL]  
-**Backend API**: [Your Flask Backend URL]  
-**Smart Contracts**: Deployed on Ethereum (Sepolia Testnet)
-
----
-
 ## 📋 Table of Contents
 
 - [Overview](#overview)
@@ -1086,3 +1078,4 @@ blockchain-fraud-detection/
 ├── .gitignore
 ├── LICENSE
 └── README.md
+
