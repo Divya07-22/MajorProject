@@ -49,21 +49,18 @@ for key in list(os.environ.keys()):
 
 app = Flask(__name__)
 
-# ✅ FIXED CORS - Allow Vercel preview deployments dynamically
-CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "https://major-project-xi-teal.vercel.app",  # Production
-            "https://*.vercel.app",  # All Vercel preview deployments
-            "http://localhost:5173",  # Local development
-            "http://localhost:3000"   # Alternative local port
-        ],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True,
-        "expose_headers": ["Content-Type", "Authorization"]
-    }
-})
+# ✅ FIXED CORS - Allow all Vercel deployments
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    if origin:
+        # Allow all localhost and vercel.app domains
+        if 'localhost' in origin or origin.endswith('.vercel.app'):
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
 
 app.config.from_mapping(
     SECRET_KEY=os.environ.get('SECRET_KEY'),
@@ -170,7 +167,6 @@ try:
     with open('build/contracts/FraudMitigator.json') as f:
         mitigator_abi = json.load(f)['abi']
     
-    # ✅ Strip whitespace from contract address
     contract_address = os.environ.get('FRAUD_MITIGATOR_CONTRACT_ADDRESS', '').strip()
     
     mitigator_contract = web3.eth.contract(
@@ -199,7 +195,6 @@ except Exception as e:
 
 # ✅ POLYGON LAYER-2 INTEGRATION
 try:
-    # ✅ Strip whitespace from contract address and private key
     polygon_contract_addr = os.environ.get('FRAUD_MITIGATOR_CONTRACT_ADDRESS', '').strip()
     polygon_private_key = os.environ.get('SIGNER_PRIVATE_KEY', '').strip()
     
@@ -324,8 +319,6 @@ def create_sample_transaction_data(amount):
 
 # --- 9. API ENDPOINTS ---
 
-
-
 @app.route('/api/health', methods=['GET'])
 def health_check():
     from sqlalchemy import text
@@ -338,15 +331,11 @@ def health_check():
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
 
-
-
     blockchain_status = False
     try:
         blockchain_status = web3.is_connected() if web3 else False
     except Exception as e:
         logger.error(f"Blockchain health check failed: {e}")
-
-
 
     mongo_status = False
     try:
@@ -355,11 +344,7 @@ def health_check():
     except Exception as e:
         logger.error(f"MongoDB health check failed: {e}")
 
-
-
     overall_status = db_status and blockchain_status and mongo_status
-
-
 
     return jsonify({
         'status': 'healthy' if overall_status else 'degraded',
@@ -373,9 +358,12 @@ def health_check():
 
 
 
-@app.route('/api/register', methods=['POST'])
+@app.route('/api/register', methods=['POST', 'OPTIONS'])
 @limiter.limit("5 per hour")
 def register():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.get_json()
         
@@ -387,11 +375,7 @@ def register():
         if User.query.filter_by(email=data['email']).first():
             return jsonify({"error": "Email already registered"}), 409
 
-
-
         role = 'user'
-
-
 
         new_user = User(
             email=data['email'],
@@ -401,33 +385,21 @@ def register():
         )
         new_user.set_password(data['password'])
 
-
-
         db.session.add(new_user)
         db.session.commit()
-
-
 
         identity_proof = zkp_handler.create_identity_proof(new_user.id, data['address'])
         new_user.zkp_identity_proof = identity_proof['commitment']
 
-
-
         did_document = did_handler.create_did_document(new_user.id, data['address'], data['email'])
         new_user.did_document = json.dumps(did_document)
 
-
-
         db.session.commit()
-
-
 
         logger.info(f"New user registered: {data['email']}")
         logger.info(f"[OK] ZK identity proof generated for {data['email']}")
         logger.info(f"[OK] DID created: {did_document['id']}")
         return jsonify({"message": "User created successfully", "user": new_user.to_dict()}), 201
-
-
 
     except Exception as e:
         db.session.rollback()
@@ -436,8 +408,11 @@ def register():
 
 
 
-@app.route('/api/admin/register', methods=['POST'])
+@app.route('/api/admin/register', methods=['POST', 'OPTIONS'])
 def register_admin():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.get_json()
         
@@ -478,9 +453,12 @@ def register_admin():
 
 
 
-@app.route('/api/login', methods=['POST'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
 @limiter.limit("10 per hour")
 def login():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.get_json()
         
@@ -509,10 +487,13 @@ def login():
 
 
 
-@app.route('/api/transaction', methods=['POST'])
+@app.route('/api/transaction', methods=['POST', 'OPTIONS'])
 @jwt_required()
 @limiter.limit("20 per minute")
 def handle_transaction():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         user = db.session.get(User, current_user_id)
@@ -545,8 +526,6 @@ def handle_transaction():
         df['anomaly_score'] = iso_forest.decision_function(scaled_features)
         isolation_risk = float((df['anomaly_score'].values[0] + 1) / 2)
 
-
-
         # 2. Random Forest
         rf_features = df[required_cols]
         rf_risk = float(rf_model.predict_proba(rf_features)[:, 1][0])
@@ -566,8 +545,6 @@ def handle_transaction():
         else:
             lstm_risk = 0.5
             logger.info("LSTM not available - using neutral score")
-
-
 
         # 4. Transformer
         description = transaction_data.get('description', f'Payment of ${amount}')
@@ -645,8 +622,6 @@ def handle_transaction():
         
         logger.info(f"Final risk score calculated: {risk_score:.2%}")
 
-
-
         tx_hash_hex = None
         
         if risk_score < 0.30:
@@ -676,8 +651,6 @@ def handle_transaction():
             color = "red"
             action = "verification_required"
 
-
-
             if twilio_client:
                 try:
                     public_url = os.environ.get('PUBLIC_URL', 'http://localhost:5000')
@@ -692,9 +665,6 @@ def handle_transaction():
                 except Exception as e:
                     logger.error(f"Twilio call failed: {e}")
 
-
-
-            # ✅ USE POLYGON LAYER-2 INSTEAD OF ETHEREUM (100x cheaper!)
             if polygon_l2 and polygon_l2.is_enabled():
                 logger.info("📊 Using Polygon Layer-2 for blockchain logging...")
                 layer2_result = polygon_l2.log_fraud_to_layer2(
@@ -714,7 +684,6 @@ def handle_transaction():
                     tx_hash_hex = None
             
             elif mitigator_contract and web3:
-                # Fallback to Ethereum mainnet (more expensive)
                 logger.warning("⚠️ Polygon not available - using Ethereum mainnet")
                 try:
                     def send_transaction():
@@ -787,9 +756,12 @@ def handle_transaction():
 
 
 
-@app.route('/api/transactions', methods=['GET'])
+@app.route('/api/transactions', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_transactions():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         
@@ -806,9 +778,12 @@ def get_transactions():
 
 
 
-@app.route('/api/risk-score/<int:transaction_id>', methods=['GET'])
+@app.route('/api/risk-score/<int:transaction_id>', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_risk_score(transaction_id):
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         
@@ -828,9 +803,12 @@ def get_risk_score(transaction_id):
 
 
 
-@app.route('/api/admin/all-logs', methods=['GET'])
+@app.route('/api/admin/all-logs', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_all_transactions():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         user = db.session.get(User, current_user_id)
@@ -859,9 +837,12 @@ def get_all_transactions():
 
 
 
-@app.route('/api/blockchain/logs', methods=['GET'])
+@app.route('/api/blockchain/logs', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_blockchain_logs():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         user = db.session.get(User, current_user_id)
@@ -898,9 +879,12 @@ def get_blockchain_logs():
 
 
 
-@app.route('/api/voice-call/initiate', methods=['POST'])
+@app.route('/api/voice-call/initiate', methods=['POST', 'OPTIONS'])
 @jwt_required()
 def initiate_voice_call():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = get_jwt_identity()
         user = User.query.get(current_user_id)
@@ -961,9 +945,12 @@ def handle_keypad(user_id):
 
 
 
-@app.route('/api/user/freeze', methods=['PUT'])
+@app.route('/api/user/freeze', methods=['PUT', 'OPTIONS'])
 @jwt_required()
 def freeze_user_account():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         claims = get_jwt()
         if claims.get('role') != 'admin':
@@ -988,9 +975,12 @@ def freeze_user_account():
 
 
 
-@app.route('/api/user/unfreeze', methods=['PUT'])
+@app.route('/api/user/unfreeze', methods=['PUT', 'OPTIONS'])
 @jwt_required()
 def unfreeze_user_account():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         claims = get_jwt()
         if claims.get('role') != 'admin':
@@ -1015,9 +1005,12 @@ def unfreeze_user_account():
 
 
 
-@app.route('/api/profile', methods=['GET'])
+@app.route('/api/profile', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_profile():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         user = db.session.get(User, current_user_id)
@@ -1040,9 +1033,12 @@ def get_profile():
 
 
 
-@app.route('/api/profile', methods=['PUT'])
+@app.route('/api/profile', methods=['PUT', 'OPTIONS'])
 @jwt_required()
 def update_profile():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         user = db.session.get(User, current_user_id)
@@ -1066,11 +1062,12 @@ def update_profile():
 
 
 
-# ✅ NEW POLYGON ENDPOINTS
-@app.route('/api/blockchain/cost-comparison', methods=['GET'])
+@app.route('/api/blockchain/cost-comparison', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_cost_comparison():
-    """Show Layer-2 vs Ethereum cost comparison"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         if polygon_l2 and polygon_l2.is_enabled():
             comparison = polygon_l2.get_cost_comparison()
@@ -1090,10 +1087,12 @@ def get_cost_comparison():
 
 
 
-@app.route('/api/blockchain/history', methods=['GET'])
+@app.route('/api/blockchain/history', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_blockchain_history():
-    """Get recent fraud reports from Polygon blockchain"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         current_user_id = int(get_jwt_identity())
         user = db.session.get(User, current_user_id)

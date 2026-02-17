@@ -105,7 +105,7 @@ const AdminLoginPage = () => {
                 return;
             }
 
-            localStorage.setItem('access_token', data.access_token);
+            localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
             
             await login({ email, password });
